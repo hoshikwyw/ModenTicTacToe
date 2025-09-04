@@ -14,7 +14,8 @@ const io = new Server(server, {
 });
 
 // In-memory room state
-const rooms = new Map();
+const rooms = new Map(); // TicTacToe
+const rpsRooms = new Map(); // Rock Paper Scissors
 
 function createEmptyBoard() {
     return Array(9).fill(null);
@@ -55,8 +56,19 @@ function makeBotMove(board, botMark) {
     return newBoard;
 }
 
+// RPS helpers
+const RPS_CHOICES = ['Rock', 'Paper', 'Scissors'];
+function rpsDecide(a, b) {
+    if (!a || !b) return null;
+    if (a === b) return 'Draw';
+    if ((a === 'Rock' && b === 'Scissors') || (a === 'Paper' && b === 'Rock') || (a === 'Scissors' && b === 'Paper')) {
+        return 'A';
+    }
+    return 'B';
+}
+
 io.on('connection', (socket) => {
-    // Create or join a room
+    // ========== TTT events ==========
     socket.on('room:join', ({ roomId }) => {
         let room = rooms.get(roomId);
         if (!room) {
@@ -89,7 +101,6 @@ io.on('connection', (socket) => {
         });
     });
 
-    // Start bot mode in a given room
     socket.on('room:startBot', ({ roomId }) => {
         let room = rooms.get(roomId);
         if (!room) {
@@ -113,7 +124,6 @@ io.on('connection', (socket) => {
         });
     });
 
-    // Handle a move
     socket.on('game:move', ({ roomId, index }) => {
         const room = rooms.get(roomId);
         if (!room || room.winner) return;
@@ -135,7 +145,6 @@ io.on('connection', (socket) => {
             isBot: room.isBot,
         });
 
-        // If bot's turn and bot mode enabled
         if (!room.winner && room.isBot) {
             const botMark = room.turn;
             room.board = makeBotMove(room.board, botMark);
@@ -151,7 +160,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Reset game
     socket.on('game:reset', ({ roomId }) => {
         const room = rooms.get(roomId);
         if (!room) return;
@@ -164,6 +172,74 @@ io.on('connection', (socket) => {
             winner: room.winner,
             players: room.players.map((p) => ({ id: p.id, mark: p.mark })),
             isBot: room.isBot,
+        });
+    });
+
+    // ========== RPS events ==========
+    socket.on('rps:join', ({ roomId }) => {
+        let room = rpsRooms.get(roomId);
+        if (!room) {
+            room = {
+                players: [], // [{id, role:'A'|'B'}]
+                choices: {}, // id -> choice
+                result: null, // 'A' | 'B' | 'Draw'
+            };
+            rpsRooms.set(roomId, room);
+        }
+        if (room.players.length >= 2) {
+            socket.emit('rps:full');
+            return;
+        }
+        const role = room.players.length === 0 ? 'A' : 'B';
+        room.players.push({ id: socket.id, role });
+        socket.join(roomId);
+        socket.emit('rps:joined', {
+            roomId,
+            role,
+            players: room.players.map((p) => ({ id: p.id, role: p.role })),
+            choices: Object.keys(room.choices).length,
+            result: room.result,
+        });
+        io.to(roomId).emit('rps:update', {
+            players: room.players.map((p) => ({ id: p.id, role: p.role })),
+            choices: Object.keys(room.choices).length,
+            result: room.result,
+        });
+    });
+
+    socket.on('rps:choose', ({ roomId, choice }) => {
+        const room = rpsRooms.get(roomId);
+        if (!room) return;
+        if (!RPS_CHOICES.includes(choice)) return;
+        room.choices[socket.id] = choice;
+        if (room.players.length === 2 && Object.keys(room.choices).length === 2) {
+            const a = room.players.find((p) => p.role === 'A')?.id;
+            const b = room.players.find((p) => p.role === 'B')?.id;
+            const outcome = rpsDecide(room.choices[a], room.choices[b]);
+            room.result = outcome;
+            io.to(roomId).emit('rps:reveal', {
+                players: room.players.map((p) => ({ id: p.id, role: p.role })),
+                choices: { [a]: room.choices[a], [b]: room.choices[b] },
+                result: outcome,
+            });
+        } else {
+            io.to(roomId).emit('rps:update', {
+                players: room.players.map((p) => ({ id: p.id, role: p.role })),
+                choices: Object.keys(room.choices).length,
+                result: room.result,
+            });
+        }
+    });
+
+    socket.on('rps:reset', ({ roomId }) => {
+        const room = rpsRooms.get(roomId);
+        if (!room) return;
+        room.choices = {};
+        room.result = null;
+        io.to(roomId).emit('rps:update', {
+            players: room.players.map((p) => ({ id: p.id, role: p.role })),
+            choices: 0,
+            result: null,
         });
     });
 
@@ -181,6 +257,21 @@ io.on('connection', (socket) => {
                 });
                 if (room.players.length === 0 && !room.isBot) {
                     rooms.delete(roomId);
+                }
+            }
+        }
+        for (const [roomId, room] of rpsRooms.entries()) {
+            const idx = room.players.findIndex((p) => p.id === socket.id);
+            if (idx !== -1) {
+                room.players.splice(idx, 1);
+                delete room.choices[socket.id];
+                io.to(roomId).emit('rps:update', {
+                    players: room.players.map((p) => ({ id: p.id, role: p.role })),
+                    choices: Object.keys(room.choices).length,
+                    result: room.result,
+                });
+                if (room.players.length === 0) {
+                    rpsRooms.delete(roomId);
                 }
             }
         }
