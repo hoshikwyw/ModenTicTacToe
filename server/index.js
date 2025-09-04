@@ -16,6 +16,7 @@ const io = new Server(server, {
 // In-memory room state
 const rooms = new Map(); // TicTacToe
 const rpsRooms = new Map(); // Rock Paper Scissors
+const findRooms = new Map(); // Find Number
 
 function createEmptyBoard() {
     return Array(9).fill(null);
@@ -65,6 +66,16 @@ function rpsDecide(a, b) {
         return 'A';
     }
     return 'B';
+}
+
+// Find Number helpers
+function shuffledNumbers(n) {
+    const arr = Array.from({ length: n }, (_, i) => i + 1);
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
 }
 
 io.on('connection', (socket) => {
@@ -243,6 +254,95 @@ io.on('connection', (socket) => {
         });
     });
 
+    // ========== Find Number events ==========
+    socket.on('find:join', ({ roomId }) => {
+        let room = findRooms.get(roomId);
+        if (!room) {
+            room = {
+                players: [], // [{id, color}]
+                numbers: shuffledNumbers(100),
+                claimed: {}, // num -> playerId
+                next: 1,
+                score: {}, // playerId -> count
+                winner: null,
+            };
+            findRooms.set(roomId, room);
+        }
+        if (room.players.length >= 2) {
+            socket.emit('find:full');
+            return;
+        }
+        const color = room.players.length === 0 ? '#22c55e' : '#3b82f6';
+        room.players.push({ id: socket.id, color });
+        room.score[socket.id] = room.score[socket.id] || 0;
+        socket.join(roomId);
+        socket.emit('find:joined', {
+            roomId,
+            color,
+            numbers: room.numbers,
+            claimed: room.claimed,
+            next: room.next,
+            score: room.score,
+            winner: room.winner,
+        });
+        io.to(roomId).emit('find:update', {
+            players: room.players,
+            next: room.next,
+            score: room.score,
+            claimed: room.claimed,
+        });
+    });
+
+    socket.on('find:click', ({ roomId, num }) => {
+        const room = findRooms.get(roomId);
+        if (!room || room.winner) return;
+        if (num !== room.next) return; // must be sequential
+        if (room.claimed[num]) return;
+        room.claimed[num] = socket.id;
+        room.score[socket.id] = (room.score[socket.id] || 0) + 1;
+        room.next += 1;
+        const done = room.next > 100;
+        if (done) {
+            const [a, b] = room.players.map((p) => p.id);
+            const sa = room.score[a] || 0;
+            const sb = room.score[b] || 0;
+            room.winner = sa === sb ? 'Draw' : (sa > sb ? a : b);
+            io.to(roomId).emit('find:reveal', {
+                claimed: room.claimed,
+                score: room.score,
+                winner: room.winner,
+                players: room.players,
+            });
+        } else {
+            io.to(roomId).emit('find:update', {
+                players: room.players,
+                next: room.next,
+                score: room.score,
+                claimed: room.claimed,
+            });
+        }
+    });
+
+    socket.on('find:reset', ({ roomId }) => {
+        const room = findRooms.get(roomId);
+        if (!room) return;
+        room.numbers = shuffledNumbers(100);
+        room.claimed = {};
+        room.next = 1;
+        room.score = Object.fromEntries(room.players.map((p) => [p.id, 0]));
+        room.winner = null;
+        io.to(roomId).emit('find:joined', {
+            roomId,
+            numbers: room.numbers,
+            claimed: room.claimed,
+            next: room.next,
+            score: room.score,
+            winner: room.winner,
+            color: room.players.find((p) => p.id === socket.id)?.color,
+        });
+    });
+
+    // ========== Disconnect cleanup ==========
     socket.on('disconnect', () => {
         for (const [roomId, room] of rooms.entries()) {
             const idx = room.players.findIndex((p) => p.id === socket.id);
@@ -272,6 +372,21 @@ io.on('connection', (socket) => {
                 });
                 if (room.players.length === 0) {
                     rpsRooms.delete(roomId);
+                }
+            }
+        }
+        for (const [roomId, room] of findRooms.entries()) {
+            const idx = room.players.findIndex((p) => p.id === socket.id);
+            if (idx !== -1) {
+                room.players.splice(idx, 1);
+                io.to(roomId).emit('find:update', {
+                    players: room.players,
+                    next: room.next,
+                    score: room.score,
+                    claimed: room.claimed,
+                });
+                if (room.players.length === 0) {
+                    findRooms.delete(roomId);
                 }
             }
         }
