@@ -89,25 +89,73 @@ export default function FindNumber() {
 	}
 
 	// Generate random absolute positions for each number (stable per render)
-	const positions = useMemo(() => {
-		const pos: Record<number, { x: number; y: number }> = {}
-		const used: { x: number; y: number }[] = []
-		const width = 600
-		const height = 400
-		const size = 44
-		const collides = (a: {x:number;y:number}, b: {x:number;y:number}) => Math.abs(a.x-b.x) < size && Math.abs(a.y-b.y) < size
-		numbers.forEach((n) => {
-			let attempt = 0
-			let placed = { x: Math.random() * (width - size), y: Math.random() * (height - size) }
-			while (used.some((u) => collides(u, placed)) && attempt < 200) {
-				placed = { x: Math.random() * (width - size), y: Math.random() * (height - size) }
-				attempt++
-			}
-			used.push(placed)
-			pos[n] = placed
-		})
-		return pos
-	}, [numbers])
+	// const positions = useMemo(() => {
+	// 	const pos: Record<number, { x: number; y: number }> = {}
+	// 	const used: { x: number; y: number }[] = []
+	// 	const width = 600
+	// 	const height = 400
+	// 	const size = 44
+	// 	const collides = (a: {x:number;y:number}, b: {x:number;y:number}) => Math.abs(a.x-b.x) < size && Math.abs(a.y-b.y) < size
+	// 	numbers.forEach((n) => {
+	// 		let attempt = 0
+	// 		let placed = { x: Math.random() * (width - size), y: Math.random() * (height - size) }
+	// 		while (used.some((u) => collides(u, placed)) && attempt < 200) {
+	// 			placed = { x: Math.random() * (width - size), y: Math.random() * (height - size) }
+	// 			attempt++
+	// 		}
+	// 		used.push(placed)
+	// 		pos[n] = placed
+	// 	})
+	// 	return pos
+	// }, [numbers])
+	// Generate random absolute positions for each number (stable per render)
+const positions = useMemo(() => {
+	const pos: Record<number, { x: number; y: number }> = {}
+	const used: { x: number; y: number }[] = []
+	const width = 600
+	const height = 400
+	const size = 44
+	const padding = 8 // extra spacing so circles don't touch
+	const minDist = size + padding
+  
+	const collides = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+	  Math.hypot(a.x - b.x, a.y - b.y) < minDist
+  
+	numbers.forEach((n) => {
+	  let attempt = 0
+	  let placed: { x: number; y: number } | null = null
+  
+	  while (attempt < 1000) {
+		const candidate = {
+		  x: Math.random() * (width - size),
+		  y: Math.random() * (height - size),
+		}
+		if (!used.some((u) => collides(u, candidate))) {
+		  placed = candidate
+		  break
+		}
+		attempt++
+	  }
+  
+	  // fallback: if random placement fails, put them in grid
+	  if (!placed) {
+		const gridSize = Math.ceil(Math.sqrt(numbers.length))
+		const cellW = width / gridSize
+		const cellH = height / gridSize
+		const idx = numbers.indexOf(n)
+		placed = {
+		  x: (idx % gridSize) * cellW + cellW / 2 - size / 2,
+		  y: Math.floor(idx / gridSize) * cellH + cellH / 2 - size / 2,
+		}
+	  }
+  
+	  used.push(placed)
+	  pos[n] = placed
+	})
+  
+	return pos
+  }, [numbers])
+  
 
 	const you = players.find((p) => p.color === myColorRef.current)
 	const opp = players.find((p) => p.color !== myColorRef.current)
