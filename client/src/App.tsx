@@ -90,7 +90,7 @@ function App() {
     socket.emit('game:reset', { roomId: state.roomId })
   }
 
-  const shareText = state.roomId ? `${location.origin} (Room: ${state.roomId})` : ''
+  
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-sky-300 to-sky-500 text-white flex items-start justify-center py-6">
