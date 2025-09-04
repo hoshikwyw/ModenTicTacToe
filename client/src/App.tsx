@@ -38,7 +38,9 @@ function App() {
     isBot: false,
   })
 
-  const serverUrl = useMemo(() => 'http://localhost:3001', [])
+  const serverUrl = useMemo(() => {
+    return import.meta.env.VITE_SERVER_URL 
+  }, [])
   const socket = useSocket(serverUrl)
 
   useEffect(() => {
@@ -95,28 +97,28 @@ function App() {
       <div className="w-full max-w-md space-y-6">
         <h1 className="text-3xl font-extrabold text-center drop-shadow">Tic Tac Toe Game</h1>
 
-        <div className="bg-slate-900 rounded-xl p-4 border border-slate-800 space-y-3">
+        <div className="bg-slate-900/20 rounded-xl p-4 border border-white/20 space-y-3">
           <div className="flex gap-2">
             <input
               placeholder="Enter room id"
               value={desiredRoomId}
               onChange={(e) => setDesiredRoomId(e.target.value)}
-              className="flex-1 rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-600"
+              className="flex-1 rounded-lg bg-white/20 border border-white/30 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-600 text-white placeholder-white/70"
             />
             <button onClick={joinRoom} className="rounded-lg bg-blue-600 hover:bg-blue-500 px-4 py-2">Join</button>
             <button onClick={startBot} className="rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-2">Play Bot</button>
           </div>
           {state.roomId && (
-            <div className="text-sm text-slate-300 flex items-center justify-between">
+            <div className="text-sm text-white/90 flex items-center justify-between">
               <div>Room: <span className="font-mono">{state.roomId}</span> • You: <span className="font-bold">{state.mark ?? '-'}</span></div>
               <button
-                className="text-xs px-2 py-1 rounded bg-slate-800 border border-slate-700 hover:bg-slate-700"
+                className="text-xs px-2 py-1 rounded bg-white/10 border border-white/20 hover:bg-white/20"
                 onClick={() => navigator.clipboard.writeText(state.roomId)}
               >Copy RoomId</button>
             </div>
           )}
           {state.roomId && (
-            <div className="text-xs text-slate-400">Invite a friend: share room id above. They should join the same id.</div>
+            <div className="text-xs text-white/80">Invite a friend: share room id above. They should join the same id.</div>
           )}
         </div>
 
@@ -133,17 +135,17 @@ function App() {
         </div>
 
         <div className="text-center space-y-2">
-      <div>
+          <div>
             {state.winner ? (
               <span className="text-lg">Winner: <span className="font-bold">{state.winner}</span></span>
             ) : (
               <span className="text-lg">Turn: <span className="font-bold">{state.turn}</span></span>
             )}
           </div>
-          <button onClick={resetGame} className="rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 px-4 py-2">Reset</button>
+          <button onClick={resetGame} className="rounded-lg bg-white/10 border border-white/20 hover:bg-white/20 px-4 py-2">Reset</button>
         </div>
       </div>
-      </div>
+    </div>
   )
 }
 
