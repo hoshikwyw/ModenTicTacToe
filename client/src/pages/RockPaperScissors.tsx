@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 const choices = ['Rock', 'Paper', 'Scissors'] as const
 
@@ -8,10 +9,11 @@ type Phase = 'lobby' | 'picking' | 'reveal'
 
 type RpsState = {
 	roomId: string
-	players: string[]
+	players: { id: string; role?: 'A' | 'B' }[]
 	choicesCount: number
 	result: 'A' | 'B' | 'Draw' | null
 	revealed?: Record<string, Choice>
+	role?: 'A' | 'B'
 }
 
 export default function RockPaperScissors() {
@@ -20,47 +22,88 @@ export default function RockPaperScissors() {
 	const [phase, setPhase] = useState<Phase>('lobby')
 	const [myChoice, setMyChoice] = useState<Choice | null>(null)
 
-	const serverUrl = useMemo(() => import.meta.env.VITE_SERVER_URL as string, [])
+	const serverUrl = useMemo(() => {
+		const envUrl = (import.meta.env.VITE_SERVER_URL as string) || ''
+		const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+		return isLocal ? 'http://localhost:3001' : envUrl
+	}, [])
 
 	const [socket, setSocket] = useState<any>(null)
+	const navigate = useNavigate()
+	const prevCountRef = useRef(0)
 	useEffect(() => {
 		let mounted = true
 		;(async () => {
 			const { io } = await import('socket.io-client')
 			if (!mounted) return
-			setSocket(io(serverUrl, { transports: ['websocket'] }))
+			const s = io(serverUrl, { transports: ['websocket'] })
+			setSocket(s)
+			console.log('[RPS] socket created ->', serverUrl)
 		})()
 		return () => { mounted = false; socket?.disconnect() }
 	}, [])
 
 	useEffect(() => {
 		if (!socket) return
-		const onUpdate = (p: { players: { id: string }[]; choices: number; result: any }) => {
-			setState((s) => ({ ...s, players: p.players.map((x) => x.id), choicesCount: p.choices, result: p.result }))
+		const onJoined = (p: { roomId: string; role: 'A'|'B'; players: {id:string; role:'A'|'B'}[]; choices: number; result: any }) => {
+			console.log('[RPS] joined', p)
+			setState({ roomId: p.roomId, role: p.role, players: p.players, choicesCount: p.choices, result: p.result })
+			setPhase('picking')
+			prevCountRef.current = p.players.length
+		}
+		const onUpdate = (p: { players: { id: string; role:'A'|'B' }[]; choices: number; result: any }) => {
+			console.log('[RPS] update', p)
+			const isReset = p.choices === 0 && p.result == null
+			setState((s) => ({
+				...s,
+				players: p.players,
+				choicesCount: p.choices,
+				result: p.result,
+				revealed: isReset ? undefined : s.revealed,
+			}))
 			if (p.result == null) setPhase('picking')
+			if (isReset) setMyChoice(null)
+			const prev = prevCountRef.current
+			const next = p.players.length
+			if (prev === 2 && next < 2) {
+				alert('Opponent left the room')
+				navigate('/')
+			}
+			prevCountRef.current = next
 		}
-		const onReveal = (p: { players: { id: string }[]; choices: Record<string, Choice>; result: 'A' | 'B' | 'Draw' }) => {
-			setState((s) => ({ ...s, players: p.players.map((x) => x.id), choicesCount: 2, result: p.result, revealed: p.choices }))
+		const onReveal = (p: { players: { id: string; role:'A'|'B' }[]; choices: Record<string, Choice>; result: 'A' | 'B' | 'Draw' }) => {
+			console.log('[RPS] reveal', p)
+			setState((s) => ({ ...s, players: p.players, choicesCount: 2, result: p.result, revealed: p.choices }))
 			setPhase('reveal')
+			prevCountRef.current = p.players.length
 		}
+		const onFull = () => {
+			console.warn('[RPS] room full')
+			alert('Room is full')
+		}
+		socket.on('connect', () => console.log('[RPS] socket connected'))
+		socket.on('rps:joined', onJoined)
 		socket.on('rps:update', onUpdate)
 		socket.on('rps:reveal', onReveal)
+		socket.on('rps:full', onFull)
 		return () => {
+			socket.off('rps:joined', onJoined)
 			socket.off('rps:update', onUpdate)
 			socket.off('rps:reveal', onReveal)
+			socket.off('rps:full', onFull)
 		}
 	}, [socket])
 
 	const joinRoom = () => {
 		if (!socket || !desiredRoomId) return
+		console.log('[RPS] join request', desiredRoomId)
 		socket.emit('rps:join', { roomId: desiredRoomId })
-		setState((s) => ({ ...s, roomId: desiredRoomId }))
-		setPhase('picking')
 	}
 
 	const choose = (c: Choice) => {
 		if (!socket || !state.roomId) return
 		setMyChoice(c)
+		console.log('[RPS] choose', c)
 		socket.emit('rps:choose', { roomId: state.roomId, choice: c })
 	}
 
@@ -68,6 +111,7 @@ export default function RockPaperScissors() {
 		if (!socket || !state.roomId) return
 		setMyChoice(null)
 		setPhase('picking')
+		console.log('[RPS] reset')
 		socket.emit('rps:reset', { roomId: state.roomId })
 	}
 
@@ -87,7 +131,7 @@ export default function RockPaperScissors() {
 				</div>
 				{state.roomId && (
 					<div className="text-sm text-white/90 flex items-center justify-between">
-						<div>Room: <span className="font-mono">{state.roomId}</span> • Players: <span className="font-bold">{state.players.length}/2</span></div>
+						<div>Room: <span className="font-mono">{state.roomId}</span> • Players: <span className="font-bold">{state.players.length}/2</span> {state.role ? `• You: ${state.role}` : ''}</div>
 						<button
 							className="text-xs px-2 py-1 rounded bg-white/10 border border-white/20 hover:bg-white/20"
 							onClick={() => navigator.clipboard.writeText(state.roomId)}
@@ -96,7 +140,7 @@ export default function RockPaperScissors() {
 				)}
 			</div>
 
-			{phase !== 'lobby' && (
+			{state.roomId && (
 				<div className="space-y-4">
 					<div className="flex items-center justify-center gap-3">
 						{choices.map((c) => (
@@ -106,8 +150,19 @@ export default function RockPaperScissors() {
 					<div className="text-center text-sm opacity-90">Choices submitted: {state.choicesCount}/2</div>
 					{phase === 'reveal' && (
 						<div className="text-center space-y-2">
-							<div>Result: <span className="font-bold">{state.result}</span></div>
-							<div className="text-xs">Revealed: {state.revealed ? JSON.stringify(state.revealed) : '-'}</div>
+							{(() => {
+								const idA = state.players.find((p) => p.role === 'A')?.id
+								const idB = state.players.find((p) => p.role === 'B')?.id
+								const yourChoice = state.role === 'A' ? state.revealed?.[idA ?? ''] : state.revealed?.[idB ?? '']
+								const oppChoice = state.role === 'A' ? state.revealed?.[idB ?? ''] : state.revealed?.[idA ?? '']
+								const winnerLabel = state.result === 'Draw' ? 'Draw' : (state.result === state.role ? 'You' : 'Opponent')
+								return (
+									<>
+										<div>Winner: <span className="font-bold">{winnerLabel}</span></div>
+										<div className="text-xs">You: <span className="font-semibold">{yourChoice ?? '-'}</span> • Opponent: <span className="font-semibold">{oppChoice ?? '-'}</span></div>
+									</>
+								)
+							})()}
 							<button onClick={reset} className="px-4 py-2 rounded-lg bg-white/10 border border-white/20 hover:bg-white/20">Play Again</button>
 						</div>
 					)}
