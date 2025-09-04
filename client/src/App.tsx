@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
 import Home from './pages/Home'
 import TicTacToe from './pages/TicTacToe'
 import RockPaperScissors from './pages/RockPaperScissors'
+import FindNumber from './pages/FindNumber'
 
 export default function App() {
 	return (
@@ -13,6 +14,7 @@ export default function App() {
 						<Link to="/">Home</Link>
 						<Link to="/tic-tac-toe">Tic Tac Toe</Link>
 						<Link to="/rock-paper-scissors">RPS</Link>
+						<Link to="/find-number">Find Number</Link>
 					</nav>
 				</header>
 				<main className="max-w-5xl mx-auto px-4 pb-10 flex items-start justify-center py-6">
@@ -20,6 +22,7 @@ export default function App() {
 						<Route path="/" element={<Home />} />
 						<Route path="/tic-tac-toe" element={<TicTacToe />} />
 						<Route path="/rock-paper-scissors" element={<RockPaperScissors />} />
+						<Route path="/find-number" element={<FindNumber />} />
 					</Routes>
 				</main>
 			</BrowserRouter>
