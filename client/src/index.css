@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+html, body, #root {
+  height: 100%;
+}
+
+@layer components {
+  .ttt-board {
+    @apply grid grid-cols-3 grid-rows-3 gap-5 sm:gap-6 place-content-center mx-auto;
+  }
+
+  .ttt-tile {
+    @apply w-24 h-24 sm:w-28 sm:h-28 rounded-md border-2 border-gray-600 bg-gray-400 flex items-center justify-center text-4xl sm:text-5xl font-extrabold text-black select-none transition-[background-color,transform] duration-200 ease-out;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.35), inset 0 2px 0 rgba(255,255,255,0.25);
+  }
+
+  .ttt-tile:hover {
+    @apply bg-gray-300 -translate-y-0.5;
+  }
+
+  .ttt-tile--filled {
+    @apply bg-gray-500;
+  }
+
+  .ttt-mark {
+    @apply drop-shadow-sm;
+  }
+}
